@@ -5,12 +5,10 @@ from torcheeg.transforms import LabelTransform
 class CategoryRange(LabelTransform):
     r'''
     Args:
-        threshold_ranges: list of list of float
-            threshold range for each attribute of sample original label to binarize
-            (from high to low)
+        threshold_ranges: list of threshold range for each attribute of sample original label to categorize
     '''
 
-    def __init__(self, threshold_ranges: Union[List]):
+    def __init__(self, threshold_ranges: Union[List, Dict]):
         super(CategoryRange, self).__init__()
         self.threshold_ranges = threshold_ranges
 
@@ -32,12 +30,12 @@ class CategoryRange(LabelTransform):
         for lvl_idx, lvl in enumerate(self.threshold_ranges):
             satistfied = False
             for att_idx, att in enumerate(lvl):
-                print(y)
-
-                if att[0] < y[att_idx] <= att[1]:
-                    satistfied = True
-                else:
-                    satistfied = False
+                for rg in att:
+                    if rg[0] < y[att_idx] <= rg[1]:
+                        satistfied = True
+                        break
+                    else:
+                        satistfied = False
             if satistfied:
                 return int(lvl_idx)
         
