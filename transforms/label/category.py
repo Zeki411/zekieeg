@@ -10,7 +10,15 @@ class CategoryRange(LabelTransform):
 
     def __init__(self, threshold_ranges: Union[List, Dict]):
         super(CategoryRange, self).__init__()
-        self.threshold_ranges = threshold_ranges
+        
+
+        if isinstance(threshold_ranges, dict):
+            self.categories = list(threshold_ranges.keys())
+            self.threshold_ranges = [threshold_ranges[cat] for cat in self.categories]
+            self.categories.append('others')
+        else:
+            self.threshold_ranges = threshold_ranges
+            self.categories = list(range(len(threshold_ranges)+1))
 
         # self.num_binaries = len(threshold_ranges) #TODO
 
@@ -37,8 +45,8 @@ class CategoryRange(LabelTransform):
                     else:
                         satistfied = False
             if satistfied:
-                return int(lvl_idx)
+                return self.categories[int(lvl_idx)]
         
-        return int(len(self.threshold_ranges)) # the last one is which is not satisfied by any range
+        return self.categories[int(len(self.threshold_ranges))] # the last one is which is not satisfied by any range
                 
 
