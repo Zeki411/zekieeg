@@ -205,6 +205,54 @@ class MRTSCNN(nn.Module):
         return x
 
 
+class FeedForwardBlock(nn.Sequential):
+    def __init__(self,
+                 in_channels: int,
+                 expansion: int = 4,
+                 dropout: float = 0.):
+        super().__init__(
+            nn.Linear(in_channels, expansion * in_channels),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(expansion * in_channels, in_channels),
+        )
+    
+class TransformerEncoderBlock(nn.Module):
+    def __init__(self, embed_dim: int, num_heads: int = 1, mha_dropout_rate: float = 0.0, ff_expansion: int = 4,  ff_dropout_rate: float = 0.0):
+        super(TransformerEncoderBlock, self).__init__()
+        self.mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=mha_dropout_rate)
+        self.ff = FeedForwardBlock(embed_dim, ff_expansion, ff_dropout_rate)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.mha(x, x, x)[0] + x
+        x = self.ff(x) + x
+        return x
+      
+        
+class TransformerEncoder(nn.Module):
+    """
+    
+    """
+    def __init__(self, depth: int, embed_dim: int, num_heads: int, mha_dropout_rate: float = 0.5, ff_expansion: int = 4, ff_dropout_rate: float = 0.5):
+        super(TransformerEncoder, self).__init__()
+        self.encoder_blocks = nn.ModuleList([
+            TransformerEncoderBlock(embed_dim=embed_dim, 
+                                    num_heads=num_heads, 
+                                    mha_dropout_rate=mha_dropout_rate, 
+                                    ff_expansion=ff_expansion, 
+                                    ff_dropout_rate=ff_dropout_rate)
+            for _ in range(depth)
+        ])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.squeeze().permute(2, 0, 1)  # (B, C, T) -> (T, B, C
+        for encoder_block in self.encoder_blocks:
+            x = encoder_block(x)
+        x = x.permute(1, 2, 0)      # (T, B, C) -> (B, C, T)
+        x = x.unsqueeze(-2)         # (B, C, T) -> (B, C, 1, T)
+        return x
+
 class ClassifierHead(nn.Module):
     def __init__(self, in_channels: int, hid_channels: int, num_classes: int, dropout_rate: float = 0.5):
         super(ClassifierHead, self).__init__()
@@ -221,41 +269,8 @@ class ClassifierHead(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
         return x
-    
-# class ExpModel2(nn.Module):
-#     def __init__(self,
-#                  in_channels: int = 1,
-#                  sampling_rate: int = 128,
-#                  num_electrodes: int = 32,
-#                  num_T: int = 16,
-#                  num_S: int = 16,
-#                  num_classes: int = 2,
-#                  hid_channels: int = 32,
-#                  dropout_rate: float = 0.5):
-#         super(ExpModel2, self).__init__()
-#         self.mr_tscnn = MRTSCNN(in_channels=in_channels, 
-#                                 sampling_rate=sampling_rate, 
-#                                 num_electrodes=num_electrodes, 
-#                                 num_T=num_T, 
-#                                 num_S=num_S)
-#         self.afr = expAFR(in_channels=self.mr_tscnn.out_channels, 
-#                           block=ResidualSEBlock,
-#                           num_blocks=2, 
-#                           deep_scale=2, 
-#                           se_reduction_base=16)
-#         self.classifier = ClassifierHead(in_channels=self.afr.out_channels, 
-#                                          hid_channels=hid_channels, 
-#                                          num_classes=num_classes, 
-#                                          dropout_rate=dropout_rate)
-    
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         x = self.mr_tscnn(x)
-#         x = self.afr(x)
-#         x = self.classifier(x)
-#         return x
-    
 
-class ExpModel2(nn.Module):
+class ExpModel3(nn.Module):
     def __init__(self,
                  in_channels: int = 1,
                  sampling_rate: int = 128,
@@ -265,40 +280,7 @@ class ExpModel2(nn.Module):
                  num_classes: int = 2,
                  hid_channels: int = 32,
                  dropout_rate: float = 0.5):
-        super(ExpModel2, self).__init__()
-        self.mr_tscnn = MRTSCNN(in_channels=in_channels, 
-                                sampling_rate=sampling_rate, 
-                                num_electrodes=num_electrodes, 
-                                num_T=num_T, 
-                                num_S=num_S)
-        self.afr = expAFR(in_channels=self.mr_tscnn.out_channels, 
-                          block=BottleneckResidualSEBlock,
-                          num_blocks=2, 
-                          deep_scale=2, 
-                          se_reduction_base=16)
-        self.classifier = ClassifierHead(in_channels=self.afr.out_channels, 
-                                         hid_channels=hid_channels, 
-                                         num_classes=num_classes, 
-                                         dropout_rate=dropout_rate)
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.mr_tscnn(x)
-        x = self.afr(x)
-        x = self.classifier(x)
-        return x
-
-
-class ExpModel2C(nn.Module):
-    def __init__(self,
-                 in_channels: int = 1,
-                 sampling_rate: int = 128,
-                 num_electrodes: int = 32,
-                 num_T: int = 16,
-                 num_S: int = 16,
-                 num_classes: int = 2,
-                 hid_channels: int = 32,
-                 dropout_rate: float = 0.5):
-        super(ExpModel2C, self).__init__()
+        super(ExpModel3, self).__init__()
         self.mr_tscnn = MRTSCNN(in_channels=in_channels, 
                                 sampling_rate=sampling_rate, 
                                 num_electrodes=num_electrodes, 
@@ -311,6 +293,14 @@ class ExpModel2C(nn.Module):
                           num_blocks=1, 
                           deep_scale=2, 
                           se_reduction_base=16)
+        
+        self.transformer = TransformerEncoder(depth=1,
+                                              embed_dim=self.afr.out_channels,
+                                              num_heads=2,
+                                              mha_dropout_rate=0.5,
+                                              ff_expansion=4,
+                                              ff_dropout_rate=0.5)
+
         self.classifier = ClassifierHead(in_channels=self.afr.out_channels, 
                                          hid_channels=hid_channels, 
                                          num_classes=num_classes, 
@@ -319,8 +309,14 @@ class ExpModel2C(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.mr_tscnn(x)
         x = self.afr(x)
+        x = self.transformer(x)
         x = self.classifier(x)
         return x
+
+
+
+
+
 
         
 
